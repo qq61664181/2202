@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>TradeMind - 股票走势复盘与交易灵感笔记</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: '#3b82f6', 600: '#2563eb' },
+            bull: '#10b981', // 盈利设为绿色
+            bear: '#ef4444', // 亏损设为红色
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom, 16px); }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-slate-950 text-slate-100 selection:bg-blue-500 selection:text-white">
+
+  <header class="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center space-x-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-lg shadow-lg shadow-blue-500/20">
+          <i data-lucide="trending-up" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-base tracking-tight leading-none text-slate-100">TradeMind</h1>
+          <span class="text-[10px] text-slate-400">股票复盘与灵感笔记</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-1.5">
+        <button onclick="openCustomPatternModal()" class="px-2.5 py-1.5 rounded-xl bg-indigo-900/40 text-indigo-300 border border-indigo-700/50 text-xs font-medium flex items-center gap-1 hover:bg-indigo-900/60 transition">
+          <i data-lucide="tag" class="w-3.5 h-3.5"></i> 形态管理
+        </button>
+        <button onclick="exportData()" title="导出备份" class="p-1.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+          <i data-lucide="download" class="w-4 h-4"></i>
+        </button>
+        <button onclick="triggerImport()" title="导入数据" class="p-1.5 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 transition">
+          <i data-lucide="upload" class="w-4 h-4"></i>
+        </button>
+        <input type="file" id="importFileInput" class="hidden" accept=".json" onchange="importData(event)">
+      </div>
+    </div>
+
+    <!-- 搜索框 -->
+    <div class="relative">
+      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+      <input type="text" id="searchInput" oninput="onSearchInput()" placeholder="搜索股票、形态、#标签 或复盘逻辑..."
+        class="w-full bg-slate-800/90 border border-slate-700/60 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition">
+    </div>
+
+    <!-- 顶部分类 Quick Bar -->
+    <div class="flex items-center space-x-2 overflow-x-auto no-scrollbar pt-2 text-xs" id="categoryChips"></div>
+  </header>
+
+  <main class="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-24" id="mainContent">
+    
+    <!-- 视图 1：复盘流 -->
+    <section id="feedSection" class="space-y-3">
+      <div id="cardContainer" class="space-y-3"></div>
+    </section>
+
+    <!-- 视图 2：月历视图 -->
+    <section id="monthlySection" class="hidden space-y-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="font-bold text-sm text-slate-100 flex items-center gap-2">
+            <i data-lucide="calendar" class="w-4 h-4 text-blue-400"></i>
+            <span id="calendarMonthTitle">2026年10月</span>
+          </h2>
+          <div class="flex items-center space-x-2">
+            <button onclick="changeMonth(-1)" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+            <button onclick="changeMonth(0)" class="text-xs px-2 py-1 rounded-lg bg-blue-600/20 text-blue-400 font-medium">本月</button>
+            <button onclick="changeMonth(1)" class="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+
+        <!-- 月度统计数据横幅 (已排除闪念便签) -->
+        <div class="grid grid-cols-3 gap-2 mb-4 text-center">
+          <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400">本月复盘机会</div>
+            <div class="text-lg font-bold text-blue-400" id="monthStatTotal">0</div>
+          </div>
+          <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400">胜/败/观察</div>
+            <div class="text-xs font-bold mt-1">
+              <span class="text-emerald-400" id="monthStatWin">0</span> / 
+              <span class="text-red-400" id="monthStatLoss">0</span> / 
+              <span class="text-slate-400" id="monthStatWatch">0</span>
+            </div>
+          </div>
+          <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800">
+            <div class="text-[10px] text-slate-400">当月胜率</div>
+            <div class="text-lg font-bold text-amber-400" id="monthStatWinRate">0%</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-slate-500 mb-1">
+          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+        </div>
+        <div id="calendarGrid" class="grid grid-cols-7 gap-1"></div>
+      </div>
+    </section>
+
+    <!-- 视图 3：形态聚类库 -->
+    <section id="patternLibrarySection" class="hidden space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider">自定义形态聚类分析</h2>
+        <button onclick="openCustomPatternModal()" class="text-xs text-blue-400 hover:underline">+ 管理形态类型</button>
+      </div>
+      <div id="patternGroupContainer" class="space-y-4"></div>
+    </section>
+
+    <!-- 视图 4：统计看板 -->
+    <section id="dashboardSection" class="hidden space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-slate-900 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs">
+            <span>复盘截图总数</span>
+            <i data-lucide="image" class="w-4 h-4 text-blue-400"></i>
+          </div>
+          <div class="text-2xl font-bold mt-2 text-slate-100" id="statChartCount">0</div>
+        </div>
+        <div class="bg-slate-900 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col justify-between">
+          <div class="flex justify-between items-center text-slate-400 text-xs">
+            <span>灵感便签</span>
+            <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+          </div>
+          <div class="text-2xl font-bold mt-2 text-slate-100" id="statNoteCount">0</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800/80 rounded-2xl p-4 space-y-3">
+        <h3 class="text-xs font-semibold text-slate-400 flex items-center gap-1.5">
+          <i data-lucide="pie-chart" class="w-4 h-4 text-indigo-400"></i>
+          胜率分布统计
+        </h3>
+        <div id="resultDistribution" class="space-y-2"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="fixed bottom-20 right-4 z-40 flex flex-col space-y-2">
+    <button onclick="openNoteModal()" class="w-11 h-11 rounded-full bg-slate-800 border border-slate-700 text-amber-400 flex items-center justify-center shadow-lg active:scale-95 transition" title="记灵感便签">
+      <i data-lucide="zap" class="w-5 h-5"></i>
+    </button>
+    <button onclick="openChartModal()" class="w-12 h-12 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/30 active:scale-95 transition" title="新建走势复盘">
+      <i data-lucide="plus" class="w-6 h-6"></i>
+    </button>
+  </div>
+
+  <nav class="fixed bottom-0 left-0 right-0 z-30 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800/80 px-4 py-2 pb-safe flex justify-around items-center text-[10px]">
+    <button id="navFeed" onclick="switchTab('feed')" class="flex flex-col items-center space-y-1 text-blue-500 font-medium">
+      <i data-lucide="layout-grid" class="w-5 h-5"></i>
+      <span>复盘流</span>
+    </button>
+    <button id="navMonthly" onclick="switchTab('monthly')" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200">
+      <i data-lucide="calendar" class="w-5 h-5"></i>
+      <span>月视图</span>
+    </button>
+    <button id="navPattern" onclick="switchTab('pattern')" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200">
+      <i data-lucide="layers" class="w-5 h-5"></i>
+      <span>形态库</span>
+    </button>
+    <button id="navDashboard" onclick="switchTab('dashboard')" class="flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200">
+      <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+      <span>数据看板</span>
+    </button>
+  </nav>
+
+  <!-- Modal 1: 走势截图上传/编辑表单 -->
+  <div id="chartModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-4 animate-in slide-in-from-bottom duration-200">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h2 class="font-bold text-base text-slate-100 flex items-center gap-2" id="chartModalTitle">
+          <i data-lucide="image-plus" class="w-5 h-5 text-blue-500"></i>
+          记录股票走势机会
+        </h2>
+        <button onclick="closeModal('chartModal')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <form id="chartForm" onsubmit="saveChartCard(event)" class="space-y-3.5">
+        <input type="hidden" id="editingRecordId" value="">
+
+        <div class="flex flex-wrap gap-3 items-center">
+          <!-- 修复：日期输入框过大，优化为自适应紧凑条框 -->
+          <div class="flex-shrink-0">
+            <label class="block text-xs font-medium text-slate-400 mb-1">复盘/交易日期 *</label>
+            <input type="date" id="tradeDate" required class="inline-flex bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+          </div>
+          <div class="flex-1 min-w-[140px]">
+            <label class="block text-xs font-medium text-slate-400 mb-1">股票名称 / 代码 *</label>
+            <input type="text" id="stockName" required placeholder="例如: 腾讯控股 / 00700" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">走势截图 *</label>
+          <div id="imagePicker" onclick="document.getElementById('chartImageInput').click()" class="border-2 border-dashed border-slate-700 hover:border-blue-500/50 rounded-xl p-3 text-center cursor-pointer bg-slate-800/40 transition">
+            <div id="imagePreviewContainer" class="hidden relative">
+              <img id="imagePreview" class="max-h-44 rounded-lg mx-auto object-contain">
+              <span class="absolute top-1 right-1 bg-slate-900/80 text-[10px] px-2 py-1 rounded text-slate-300">更换截图</span>
+            </div>
+            <div id="imagePlaceholder" class="space-y-1 text-slate-400 py-2">
+              <i data-lucide="upload-cloud" class="w-7 h-7 mx-auto text-slate-500"></i>
+              <p class="text-xs">点击上传走势图片 (自动移动端压缩)</p>
+            </div>
+          </div>
+          <input type="file" id="chartImageInput" accept="image/*" class="hidden" onchange="handleImageSelect(event)">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">自定义形态归类</label>
+            <select id="patternTypeSelect" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-500 text-slate-100"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">胜率 / 交易状态</label>
+            <select id="tradeResult" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-500 text-slate-100">
+              <option value="观察中">⚪ 观察中 / 待验证</option>
+              <!-- 盈利采用绿色，亏损采用红色 -->
+              <option value="成功盈利">🟢 盈利 / 止盈</option>
+              <option value="失败止损">🔴 亏损 / 止损</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">自定义标签 (用逗号或空格隔开)</label>
+          <input type="text" id="chartTags" placeholder="例: 打板 低吸 缩量 龙头" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500">
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-xs font-medium text-slate-400">复盘逻辑与总结</label>
+            <button type="button" onclick="insertLogicTemplate()" class="text-[10px] text-blue-400 hover:underline flex items-center gap-0.5">
+              <i data-lucide="file-text" class="w-3 h-3"></i> 插入复盘模板
+            </button>
+          </div>
+          <textarea id="chartNotes" rows="4" placeholder="记录支撑压力、筹码变化、K线细节及操作逻辑..." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-xs text-slate-100 focus:outline-none focus:border-blue-500"></textarea>
+        </div>
+
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2.5 rounded-xl text-xs shadow-lg shadow-blue-600/30 transition">
+          保存复盘记录
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: 闪念便签表单 -->
+  <div id="noteModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h2 class="font-bold text-base text-slate-100 flex items-center gap-2">
+          <i data-lucide="zap" class="w-5 h-5 text-amber-400"></i>
+          交易灵感胶囊
+        </h2>
+        <button onclick="closeModal('noteModal')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <form id="noteForm" onsubmit="saveNoteCard(event)" class="space-y-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">灵感 / 盘感想法 *</label>
+          <textarea id="noteContent" required rows="5" placeholder="记录突发交易灵感、宏观盘感或交易心态总结..." 
+            class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3.5 text-sm sm:text-base text-slate-100 focus:outline-none focus:border-amber-500 leading-relaxed placeholder-slate-500"></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">优先级</label>
+            <select id="notePriority" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500">
+              <option value="重要紧急">🔴 重要紧急</option>
+              <option value="常态关注" selected>🟡 常态关注</option>
+              <option value="盘后思考">🔵 盘后思考</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1">自定义标签</label>
+            <input type="text" id="noteTag" placeholder="例: 情绪 心态" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500">
+          </div>
+        </div>
+
+        <button type="submit" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs shadow-lg shadow-amber-500/20 transition">
+          保存交易灵感
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: 自定义形态管理 -->
+  <div id="customPatternModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg p-5 space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h2 class="font-bold text-base text-slate-100 flex items-center gap-2">
+          <i data-lucide="tag" class="w-5 h-5 text-indigo-400"></i>
+          自定义形态管理
+        </h2>
+        <button onclick="closeModal('customPatternModal')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="space-y-3">
+        <div class="flex space-x-2">
+          <input type="text" id="newPatternName" placeholder="新形态名称 (如: 主升浪拉升)" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500">
+          <input type="color" id="newPatternColor" value="#3b82f6" class="w-10 h-9 p-1 bg-slate-800 border border-slate-700 rounded-xl cursor-pointer">
+          <button onclick="addCustomPattern()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl text-xs font-medium">添加</button>
+        </div>
+
+        <div class="text-xs text-slate-400 pt-2">已创建形态列表：</div>
+        <div id="patternListManager" class="space-y-2 max-h-56 overflow-y-auto no-scrollbar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: 日历点击 - 单日记录弹窗 -->
+  <div id="dateDetailModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-end sm:items-center justify-center hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-5 space-y-3">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h2 class="font-bold text-sm text-slate-100" id="dateDetailTitle">复盘记录</h2>
+        <button onclick="closeModal('dateDetailModal')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div id="dateDetailContainer" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- Modal 5: 全屏图片查看 -->
+  <div id="imageViewerModal" class="fixed inset-0 z-50 bg-black/95 flex items-center justify-center hidden" onclick="closeModal('imageViewerModal')">
+    <button class="absolute top-4 right-4 text-white p-2 rounded-full bg-slate-800/80"><i data-lucide="x" class="w-6 h-6"></i></button>
+    <img id="fullSizeImage" class="max-w-full max-h-full object-contain p-2">
+  </div>
+
+  <script>
+    let records = JSON.parse(localStorage.getItem('trademind_records') || '[]');
+    let customPatterns = JSON.parse(localStorage.getItem('trademind_patterns') || JSON.stringify([
+      { name: '突破形态', color: '#3b82f6' },
+      { name: '底部反转', color: '#10b981' },
+      { name: '洗盘震荡', color: '#f59e0b' },
+      { name: '趋势追踪', color: '#8b5cf6' },
+      { name: '卡位启动', color: '#ec4899' }
+    ]));
+
+    let currentCategory = 'ALL';
+    let currentTab = 'feed';
+    let base64ImageTemp = '';
+    let currentCalendarDate = new Date();
+
+    if (records.length === 0) {
+      records = [
+        {
+          id: 'demo-1',
+          type: 'CHART',
+          tradeDate: new Date().toISOString().slice(0, 10),
+          stockName: 'NVDA / 英伟达',
+          patternType: '突破形态',
+          tradeResult: '成功盈利',
+          tags: ['突破', '半导体', '龙头'],
+          notes: '【选股逻辑】日线级别收盘突破高位箱体\n【K线与量能】缩量踩5日线后放量大阳线上攻\n【后续计划】持有并沿5日线追踪。',
+          imageUrl: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&auto=format&fit=crop&q=60',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: 'demo-2',
+          type: 'NOTE',
+          tradeDate: new Date().toISOString().slice(0, 10),
+          content: '【盘感总结】大盘今日缩量震荡，主流领涨板块分化。关注明日尾盘是否有资金卡位抢筹动作，控制仓位切勿追高。',
+          priority: '重要紧急',
+          tag: '情绪心态',
+          createdAt: new Date().toISOString()
+        }
+      ];
+      saveToStorage();
+    }
+
+    window.onload = function() {
+      document.getElementById('tradeDate').value = new Date().toISOString().slice(0, 10);
+      saveCustomPatternsToStorage();
+      renderCategoryChips();
+      renderApp();
+      lucide.createIcons();
+    };
+
+    function saveToStorage() {
+      localStorage.setItem('trademind_records', JSON.stringify(records));
+    }
+
+    function saveCustomPatternsToStorage() {
+      localStorage.setItem('trademind_patterns', JSON.stringify(customPatterns));
+    }
+
+    function renderCategoryChips() {
+      const container = document.getElementById('categoryChips');
+      const allCategoryOptions = ['ALL', '闪念便签', ...customPatterns.map(p => p.name)];
+      
+      container.innerHTML = allCategoryOptions.map(cat => {
+        const active = currentCategory === cat;
+        return `
+          <button onclick="setCategory('${cat}')" class="px-3 py-1 rounded-full whitespace-nowrap transition text-xs font-medium ${
+            active ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+          }">
+            ${cat === 'ALL' ? '全部记录' : cat}
+          </button>
+        `;
+      }).join('');
+
+      const select = document.getElementById('patternTypeSelect');
+      select.innerHTML = customPatterns.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+    }
+
+    function setCategory(cat) {
+      currentCategory = cat;
+      if (currentTab !== 'feed') {
+        switchTab('feed');
+      } else {
+        renderCategoryChips();
+        renderApp();
+      }
+    }
+
+    function onSearchInput() {
+      if (currentTab !== 'feed') {
+        switchTab('feed');
+      } else {
+        renderApp();
+      }
+    }
+
+    function renderApp() {
+      if (currentTab === 'feed') renderFeedView();
+      else if (currentTab === 'monthly') renderMonthlyView();
+      else if (currentTab === 'pattern') renderPatternLibraryView();
+      else if (currentTab === 'dashboard') renderDashboardView();
+    }
+
+    function renderFeedView() {
+      const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
+      const container = document.getElementById('cardContainer');
+
+      const filtered = records.filter(item => {
+        const matchesCategory = currentCategory === 'ALL' || 
+          (currentCategory === '闪念便签' && item.type === 'NOTE') ||
+          (item.patternType === currentCategory);
+
+        const tagsString = (item.tags || []).join(' ').toLowerCase();
+        const matchesSearch = !keyword || 
+          (item.stockName && item.stockName.toLowerCase().includes(keyword)) ||
+          (item.notes && item.notes.toLowerCase().includes(keyword)) ||
+          (item.content && item.content.toLowerCase().includes(keyword)) ||
+          (item.patternType && item.patternType.toLowerCase().includes(keyword)) ||
+          tagsString.includes(keyword.replace('#', ''));
+
+        return matchesCategory && matchesSearch;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 text-slate-500 text-xs">
+            <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 opacity-40"></i>
+            未找到相关的复盘或灵感记录
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => item.type === 'CHART' ? createChartCardHtml(item) : createNoteCardHtml(item)).join('');
+      lucide.createIcons();
+    }
+
+    function renderMonthlyView() {
+      const year = currentCalendarDate.getFullYear();
+      const month = currentCalendarDate.getMonth();
+      document.getElementById('calendarMonthTitle').innerText = `${year}年${month + 1}月`;
+
+      const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+      
+      // 修改：在月视历中仅统计股票走势复盘 (CHART)，忽略闪念便签 (NOTE)
+      const monthRecords = records.filter(r => r.type === 'CHART' && r.tradeDate && r.tradeDate.startsWith(monthPrefix));
+      
+      const total = monthRecords.length;
+      const wins = monthRecords.filter(r => r.tradeResult === '成功盈利').length;
+      const losses = monthRecords.filter(r => r.tradeResult === '失败止损').length;
+      const watchCount = total - wins - losses;
+      const winRate = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
+
+      document.getElementById('monthStatTotal').innerText = total;
+      document.getElementById('monthStatWin').innerText = wins;
+      document.getElementById('monthStatLoss').innerText = losses;
+      document.getElementById('monthStatWatch').innerText = watchCount;
+      document.getElementById('monthStatWinRate').innerText = `${winRate}%`;
+
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const grid = document.getElementById('calendarGrid');
+      grid.innerHTML = '';
+
+      for (let i = 0; i < firstDay; i++) {
+        grid.innerHTML += `<div class="h-16 bg-slate-900/30 rounded-xl border border-slate-800/30"></div>`;
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        // 同样在日历各格子里排除便签
+        const dayRecords = records.filter(r => r.type === 'CHART' && r.tradeDate === dateStr);
+        const hasRecords = dayRecords.length > 0;
+
+        const patternDots = dayRecords.map(r => {
+          const p = customPatterns.find(p => p.name === r.patternType);
+          return `<span class="w-1.5 h-1.5 rounded-full" style="background-color: ${p ? p.color : '#3b82f6'}"></span>`;
+        }).slice(0, 4).join('');
+
+        grid.innerHTML += `
+          <div onclick="openDateDetail('${dateStr}')" class="h-16 p-1 rounded-xl border ${
+            hasRecords ? 'bg-slate-800/80 border-slate-700/80 cursor-pointer hover:border-blue-500/50' : 'bg-slate-900/60 border-slate-800/50 text-slate-600'
+          } flex flex-col justify-between transition">
+            <div class="flex justify-between items-center text-[10px]">
+              <span class="${hasRecords ? 'font-bold text-slate-200' : ''}">${day}</span>
+              ${hasRecords ? `<span class="text-[9px] text-blue-400 font-semibold">${dayRecords.length}</span>` : ''}
+            </div>
+            <div class="flex flex-wrap gap-0.5 mt-1">${patternDots}</div>
+          </div>
+        `;
+      }
+    }
+
+    function changeMonth(delta) {
+      if (delta === 0) currentCalendarDate = new Date();
+      else currentCalendarDate.setMonth(currentCalendarDate.getMonth() + delta);
+      renderMonthlyView();
+    }
+
+    function openDateDetail(dateStr) {
+      // 点击月历查看单日复盘记录，只展现 CHART
+      const dayRecords = records.filter(r => r.type === 'CHART' && r.tradeDate === dateStr);
+      if (dayRecords.length === 0) return;
+
+      document.getElementById('dateDetailTitle').innerText = `${dateStr} 复盘案例 (${dayRecords.length}条)`;
+      const container = document.getElementById('dateDetailContainer');
+      container.innerHTML = dayRecords.map(r => createChartCardHtml(r)).join('');
+      document.getElementById('dateDetailModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function renderPatternLibraryView() {
+      const container = document.getElementById('patternGroupContainer');
+      const chartItems = records.filter(r => r.type === 'CHART');
+
+      if (customPatterns.length === 0) {
+        container.innerHTML = `<div class="text-xs text-slate-500 py-8 text-center">暂无自定义形态。</div>`;
+        return;
+      }
+
+      container.innerHTML = customPatterns.map(pattern => {
+        const matches = chartItems.filter(c => c.patternType === pattern.name);
+        const wins = matches.filter(c => c.tradeResult === '成功盈利').length;
+        const losses = matches.filter(c => c.tradeResult === '失败止损').length;
+        const winRate = (wins + losses) > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
+
+        return `
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div class="flex justify-between items-center">
+              <div class="flex items-center space-x-2">
+                <span class="w-3 h-3 rounded-full" style="background-color: ${pattern.color}"></span>
+                <span class="font-bold text-sm text-slate-100">${escapeHtml(pattern.name)}</span>
+                <span class="text-[10px] text-slate-500 bg-slate-800 px-2 py-0.5 rounded-full">${matches.length} 案例</span>
+              </div>
+              <div class="text-xs text-slate-400">胜率: <span class="font-bold text-emerald-400">${winRate}%</span></div>
+            </div>
+
+            ${matches.length > 0 ? `
+              <div class="flex space-x-3 overflow-x-auto no-scrollbar py-1">
+                ${matches.map(item => `
+                  <div class="w-48 flex-shrink-0 bg-slate-950 border border-slate-800 rounded-xl p-2 space-y-1.5" onclick="viewFullImage('${item.imageUrl}')">
+                    <div class="h-28 overflow-hidden rounded-lg bg-slate-900 relative">
+                      <img src="${item.imageUrl}" class="w-full h-full object-cover">
+                      <span class="absolute top-1 left-1 bg-slate-900/80 text-[9px] px-1.5 py-0.5 rounded text-slate-300">${item.tradeResult || '待验证'}</span>
+                    </div>
+                    <div class="text-xs font-semibold text-slate-200 truncate">${escapeHtml(item.stockName)}</div>
+                    <div class="text-[10px] text-slate-400 line-clamp-2">${escapeHtml(item.notes || '无逻辑')}</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : `<div class="text-[11px] text-slate-600 italic py-2">无归类走势图</div>`}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderDashboardView() {
+      const chartItems = records.filter(r => r.type === 'CHART');
+      const noteItems = records.filter(r => r.type === 'NOTE');
+
+      document.getElementById('statChartCount').innerText = chartItems.length;
+      document.getElementById('statNoteCount').innerText = noteItems.length;
+
+      const wins = chartItems.filter(c => c.tradeResult === '成功盈利').length;
+      const losses = chartItems.filter(c => c.tradeResult === '失败止损').length;
+      const watches = chartItems.filter(c => !c.tradeResult || c.tradeResult === '观察中').length;
+
+      // 优化：修改胜率统计，盈利设为绿色 (emerald)，亏损设为红色 (red)
+      const resultContainer = document.getElementById('resultDistribution');
+      resultContainer.innerHTML = `
+        <div class="space-y-2 text-xs">
+          <div class="flex justify-between text-slate-400">
+            <span>成功盈利 (${wins})</span>
+            <span class="text-emerald-400 font-bold">${Math.round((wins / (chartItems.length || 1))*100)}%</span>
+          </div>
+          <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div class="bg-emerald-500 h-full rounded-full" style="width: ${(wins / (chartItems.length || 1))*100}%"></div>
+          </div>
+
+          <div class="flex justify-between text-slate-400 pt-1">
+            <span>失败止损 (${losses})</span>
+            <span class="text-red-400 font-bold">${Math.round((losses / (chartItems.length || 1))*100)}%</span>
+          </div>
+          <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div class="bg-red-500 h-full rounded-full" style="width: ${(losses / (chartItems.length || 1))*100}%"></div>
+          </div>
+
+          <div class="flex justify-between text-slate-400 pt-1">
+            <span>观察跟踪 (${watches})</span>
+            <span class="text-slate-400 font-bold">${Math.round((watches / (chartItems.length || 1))*100)}%</span>
+          </div>
+          <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div class="bg-slate-600 h-full rounded-full" style="width: ${(watches / (chartItems.length || 1))*100}%"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function createChartCardHtml(item) {
+      const pattern = customPatterns.find(p => p.name === item.patternType);
+      const patternColor = pattern ? pattern.color : '#3b82f6';
+      const isWin = item.tradeResult === '成功盈利';
+      const isLoss = item.tradeResult === '失败止损';
+      // 优化卡片上的标签颜色：盈利绿色，亏损红色
+      const resultBadge = isWin ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : (isLoss ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-slate-800 text-slate-400 border-slate-700');
+
+      return `
+        <div class="bg-slate-900 border border-slate-800/90 rounded-2xl p-3.5 space-y-2.5 shadow-sm">
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="font-bold text-sm text-slate-100">${escapeHtml(item.stockName)}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full border ${resultBadge}">${item.tradeResult || '观察中'}</span>
+              </div>
+              <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
+                <span class="flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full" style="background-color: ${patternColor}"></span>
+                  ${item.patternType}
+                </span>
+                <span>•</span>
+                <span>${item.tradeDate || item.createdAt.slice(0, 10)}</span>
+              </div>
+            </div>
+            <div class="flex items-center space-x-1">
+              <button onclick="copyShareCard('${item.id}')" class="text-slate-400 hover:text-blue-400 p-1" title="复制摘要">
+                <i data-lucide="share-2" class="w-4 h-4"></i>
+              </button>
+              <button onclick="editRecord('${item.id}')" class="text-slate-400 hover:text-blue-400 p-1" title="编辑记录">
+                <i data-lucide="edit-3" class="w-4 h-4"></i>
+              </button>
+              <button onclick="deleteRecord('${item.id}')" class="text-slate-500 hover:text-red-400 p-1" title="删除">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          ${item.imageUrl ? `
+            <div class="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800/60 group cursor-pointer" onclick="viewFullImage('${item.imageUrl}')">
+              <img src="${item.imageUrl}" class="w-full max-h-56 object-cover" alt="走势截图" onerror="this.src='https://placehold.co/600x300/1e293b/94a3b8?text=图片无法加载'">
+            </div>
+          ` : ''}
+
+          ${(item.tags && item.tags.length > 0) ? `
+            <div class="flex flex-wrap gap-1">
+              ${item.tags.map(t => `<button onclick="filterByTag('${t}')" class="text-[10px] bg-slate-800 text-blue-300 hover:bg-blue-900/40 px-2 py-0.5 rounded-md border border-slate-700/50">#${escapeHtml(t)}</button>`).join('')}
+            </div>
+          ` : ''}
+
+          ${item.notes ? `<p class="text-xs text-slate-300 leading-relaxed bg-slate-800/40 p-2.5 rounded-xl border border-slate-800/50 whitespace-pre-line">${escapeHtml(item.notes)}</p>` : ''}
+        </div>
+      `;
+    }
+
+    function createNoteCardHtml(item) {
+      return `
+        <div class="bg-slate-900 border border-amber-500/25 rounded-2xl p-4 space-y-2.5 relative shadow-md">
+          <div class="flex items-center justify-between border-b border-amber-500/10 pb-2">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+              <span class="text-xs font-bold text-amber-400">${escapeHtml(item.priority || '随手记')}</span>
+              ${item.tag ? `<span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md font-medium">#${escapeHtml(item.tag)}</span>` : ''}
+            </div>
+            <button onclick="deleteRecord('${item.id}')" class="text-slate-500 hover:text-red-400 p-1">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <p class="text-sm sm:text-base text-slate-100 font-normal leading-relaxed whitespace-pre-wrap tracking-wide bg-slate-950/40 p-3 rounded-xl border border-slate-800/60">${escapeHtml(item.content)}</p>
+          <div class="text-[10px] text-slate-400 text-right font-mono">${item.tradeDate || item.createdAt.slice(0, 10)}</div>
+        </div>
+      `;
+    }
+
+    function openChartModal() {
+      base64ImageTemp = '';
+      document.getElementById('editingRecordId').value = '';
+      document.getElementById('chartModalTitle').innerHTML = `<i data-lucide="image-plus" class="w-5 h-5 text-blue-500"></i> 记录股票走势机会`;
+      document.getElementById('chartForm').reset();
+      document.getElementById('tradeDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('imagePreviewContainer').classList.add('hidden');
+      document.getElementById('imagePlaceholder').classList.remove('hidden');
+      document.getElementById('chartModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function editRecord(id) {
+      const record = records.find(r => r.id === id);
+      if (!record || record.type !== 'CHART') return;
+
+      document.getElementById('editingRecordId').value = record.id;
+      document.getElementById('chartModalTitle').innerHTML = `<i data-lucide="edit-3" class="w-5 h-5 text-blue-500"></i> 编辑复盘记录`;
+      
+      document.getElementById('tradeDate').value = record.tradeDate || '';
+      document.getElementById('stockName').value = record.stockName || '';
+      document.getElementById('patternTypeSelect').value = record.patternType || customPatterns[0]?.name;
+      document.getElementById('tradeResult').value = record.tradeResult || '观察中';
+      document.getElementById('chartTags').value = (record.tags || []).join(' ');
+      document.getElementById('chartNotes').value = record.notes || '';
+
+      base64ImageTemp = record.imageUrl || '';
+      if (base64ImageTemp) {
+        document.getElementById('imagePreview').src = base64ImageTemp;
+        document.getElementById('imagePreviewContainer').classList.remove('hidden');
+        document.getElementById('imagePlaceholder').classList.add('hidden');
+      }
+
+      document.getElementById('chartModal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function openNoteModal() {
+      document.getElementById('noteForm').reset();
+      document.getElementById('noteModal').classList.remove('hidden');
+    }
+
+    function openCustomPatternModal() {
+      renderPatternManagerList();
+      document.getElementById('customPatternModal').classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function handleImageSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxWidth = 1024;
+
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          base64ImageTemp = canvas.toDataURL('image/jpeg', 0.8);
+          document.getElementById('imagePreview').src = base64ImageTemp;
+          document.getElementById('imagePreviewContainer').classList.remove('hidden');
+          document.getElementById('imagePlaceholder').classList.add('hidden');
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function insertLogicTemplate() {
+      const textarea = document.getElementById('chartNotes');
+      const template = `【选股逻辑】：\n【K线与形态特征】：\n【后续评估计划】：`;
+      if (!textarea.value) {
+        textarea.value = template;
+      } else {
+        textarea.value += `\n` + template;
+      }
+    }
+
+    function saveChartCard(e) {
+      e.preventDefault();
+      if (!base64ImageTemp) {
+        alert('请上传走势图截图');
+        return;
+      }
+
+      const editingId = document.getElementById('editingRecordId').value;
+      const rawTags = document.getElementById('chartTags').value;
+      const parsedTags = rawTags.split(/[,，\s]+/).map(t => t.trim()).filter(Boolean);
+
+      if (editingId) {
+        const index = records.findIndex(r => r.id === editingId);
+        if (index !== -1) {
+          records[index] = {
+            ...records[index],
+            tradeDate: document.getElementById('tradeDate').value,
+            stockName: document.getElementById('stockName').value,
+            patternType: document.getElementById('patternTypeSelect').value,
+            tradeResult: document.getElementById('tradeResult').value,
+            tags: parsedTags,
+            notes: document.getElementById('chartNotes').value,
+            imageUrl: base64ImageTemp
+          };
+        }
+      } else {
+        const newRecord = {
+          id: Date.now().toString(),
+          type: 'CHART',
+          tradeDate: document.getElementById('tradeDate').value,
+          stockName: document.getElementById('stockName').value,
+          patternType: document.getElementById('patternTypeSelect').value,
+          tradeResult: document.getElementById('tradeResult').value,
+          tags: parsedTags,
+          notes: document.getElementById('chartNotes').value,
+          imageUrl: base64ImageTemp,
+          createdAt: new Date().toISOString()
+        };
+        records.unshift(newRecord);
+      }
+
+      saveToStorage();
+      closeModal('chartModal');
+      renderApp();
+    }
+
+    function saveNoteCard(e) {
+      e.preventDefault();
+      const newRecord = {
+        id: Date.now().toString(),
+        type: 'NOTE',
+        tradeDate: new Date().toISOString().slice(0, 10),
+        content: document.getElementById('noteContent').value,
+        priority: document.getElementById('notePriority').value,
+        tag: document.getElementById('noteTag').value,
+        createdAt: new Date().toISOString()
+      };
+
+      records.unshift(newRecord);
+      saveToStorage();
+      closeModal('noteModal');
+      renderApp();
+    }
+
+    function filterByTag(tag) {
+      document.getElementById('searchInput').value = `#${tag}`;
+      if (currentTab !== 'feed') switchTab('feed');
+      else renderApp();
+    }
+
+    function copyShareCard(id) {
+      const item = records.find(r => r.id === id);
+      if (!item) return;
+
+      const summary = `📈 【TradeMind 复盘笔记】\n股票：${item.stockName}\n日期：${item.tradeDate}\n形态：${item.patternType}\n状态：${item.tradeResult || '观察中'}\n逻辑总结：\n${item.notes || '无'}`;
+      
+      const textArea = document.createElement('textarea');
+      textArea.value = summary;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      alert('复盘摘要已复制到剪贴板！');
+    }
+
+    function addCustomPattern() {
+      const nameInput = document.getElementById('newPatternName');
+      const colorInput = document.getElementById('newPatternColor');
+      const name = nameInput.value.trim();
+
+      if (!name) return;
+      if (customPatterns.some(p => p.name === name)) {
+        alert('该形态名称已存在');
+        return;
+      }
+
+      customPatterns.push({ name, color: colorInput.value });
+      saveCustomPatternsToStorage();
+      nameInput.value = '';
+      renderPatternManagerList();
+      renderCategoryChips();
+      renderApp();
+    }
+
+    function deleteCustomPattern(name) {
+      if (confirm(`确定要删除形态「${name}」吗？`)) {
+        customPatterns = customPatterns.filter(p => p.name !== name);
+        saveCustomPatternsToStorage();
+        renderPatternManagerList();
+        renderCategoryChips();
+        renderApp();
+      }
+    }
+
+    function renderPatternManagerList() {
+      const container = document.getElementById('patternListManager');
+      container.innerHTML = customPatterns.map(p => `
+        <div class="flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-700/60">
+          <div class="flex items-center space-x-2">
+            <span class="w-3.5 h-3.5 rounded-full" style="background-color: ${p.color}"></span>
+            <span class="text-xs font-medium text-slate-200">${escapeHtml(p.name)}</span>
+          </div>
+          <button onclick="deleteCustomPattern('${p.name}')" class="text-slate-500 hover:text-red-400 p-1">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function deleteRecord(id) {
+      if (confirm('确定删除此条记录吗？')) {
+        records = records.filter(r => r.id !== id);
+        saveToStorage();
+        renderApp();
+      }
+    }
+
+    function viewFullImage(url) {
+      document.getElementById('fullSizeImage').src = url;
+      document.getElementById('imageViewerModal').classList.remove('hidden');
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      const tabs = {
+        feed: { sec: 'feedSection', nav: 'navFeed' },
+        monthly: { sec: 'monthlySection', nav: 'navMonthly' },
+        pattern: { sec: 'patternLibrarySection', nav: 'navPattern' },
+        dashboard: { sec: 'dashboardSection', nav: 'navDashboard' }
+      };
+
+      Object.keys(tabs).forEach(t => {
+        const isCurrent = t === tab;
+        document.getElementById(tabs[t].sec).classList.toggle('hidden', !isCurrent);
+        const navBtn = document.getElementById(tabs[t].nav);
+        navBtn.className = isCurrent ? 
+          "flex flex-col items-center space-y-1 text-blue-500 font-medium" : 
+          "flex flex-col items-center space-y-1 text-slate-400 hover:text-slate-200";
+      });
+
+      renderCategoryChips();
+      renderApp();
+    }
+
+    function exportData() {
+      const exportObject = { records, customPatterns };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObject, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `TradeMind_Backup_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function triggerImport() {
+      document.getElementById('importFileInput').click();
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const imported = JSON.parse(evt.target.result);
+          if (imported.records && imported.customPatterns) {
+            records = imported.records;
+            customPatterns = imported.customPatterns;
+          } else if (Array.isArray(imported)) {
+            records = imported;
+          }
+          saveToStorage();
+          saveCustomPatternsToStorage();
+          renderCategoryChips();
+          renderApp();
+          alert('数据导入成功！');
+        } catch (err) {
+          alert('文件读取解析失败');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
